@@ -1,8 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System.Collections.Generic;
 using JetBrains.Annotations;
 using osu.Framework.IO.Stores;
@@ -17,7 +15,7 @@ namespace osu.Game.Skinning
         public static SkinInfo CreateInfo() => new SkinInfo
         {
             ID = Skinning.SkinInfo.CLASSIC_SKIN, // this is temporary until database storage is decided upon.
-            Name = "osu!classic",
+            Name = "osu! \"classic\" (2013)",
             Creator = "team osu!",
             Protected = true,
             InstantiationInfo = typeof(DefaultLegacySkin).GetInvariantInstantiationInfo()
@@ -33,8 +31,7 @@ namespace osu.Game.Skinning
             : base(
                 skin,
                 resources,
-                // In the case of the actual default legacy skin (ie. the fallback one, which a user hasn't applied any modifications to) we want to use the game provided resources.
-                skin.Protected ? new NamespacedResourceStore<byte[]>(resources.Resources, "Skins/Legacy") : null
+                new NamespacedResourceStore<byte[]>(resources.Resources, "Skins/Legacy")
             )
         {
             Configuration.CustomColours["SliderBall"] = new Color4(2, 170, 255, 255);
@@ -45,6 +42,8 @@ namespace osu.Game.Skinning
                 new Color4(18, 124, 255, 255),
                 new Color4(242, 24, 57, 255)
             };
+
+            Configuration.ConfigDictionary[nameof(SkinConfiguration.LegacySetting.AllowSliderBallTint)] = @"true";
 
             Configuration.LegacyVersion = 2.7m;
         }

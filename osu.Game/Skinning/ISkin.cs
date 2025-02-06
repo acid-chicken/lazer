@@ -10,16 +10,16 @@ using osu.Game.Audio;
 namespace osu.Game.Skinning
 {
     /// <summary>
-    /// Provides access to skinnable elements.
+    /// Provides access to various elements contained by a skin.
     /// </summary>
     public interface ISkin
     {
         /// <summary>
         /// Retrieve a <see cref="Drawable"/> component implementation.
         /// </summary>
-        /// <param name="component">The requested component.</param>
+        /// <param name="lookup">The requested component.</param>
         /// <returns>A drawable representation for the requested component, or null if unavailable.</returns>
-        Drawable? GetDrawableComponent(ISkinComponent component);
+        Drawable? GetDrawableComponent(ISkinComponentLookup lookup);
 
         /// <summary>
         /// Retrieve a <see cref="Texture"/>.
@@ -47,6 +47,9 @@ namespace osu.Game.Skinning
         /// <summary>
         /// Retrieve a configuration value.
         /// </summary>
+        /// <remarks>
+        /// Note that while this returns a bindable value, it is not actually updated.
+        /// Until the API is fixed, just use the received bindable's <see cref="IBindable{TValue}.Value"/> immediately.</remarks>
         /// <param name="lookup">The requested configuration value.</param>
         /// <returns>A matching value boxed in an <see cref="IBindable{TValue}"/>, or null if unavailable.</returns>
         IBindable<TValue>? GetConfig<TLookup, TValue>(TLookup lookup)
