@@ -1,9 +1,8 @@
-// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Text.RegularExpressions;
 using osu.Framework.Allocation;
@@ -13,6 +12,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Online;
 using osu.Game.Online.API.Requests.Responses;
 using osuTK;
 using osuTK.Graphics;
@@ -20,15 +20,18 @@ using APIUser = osu.Game.Online.API.Requests.Responses.APIUser;
 
 namespace osu.Game.Overlays.Changelog
 {
-    public class ChangelogEntry : FillFlowContainer
+    public partial class ChangelogEntry : FillFlowContainer
     {
         private readonly APIChangelogEntry entry;
 
         [Resolved]
-        private OsuColour colours { get; set; }
+        private OsuColour colours { get; set; } = null!;
 
         [Resolved]
-        private OverlayColourProvider colourProvider { get; set; }
+        private OverlayColourProvider colourProvider { get; set; } = null!;
+
+        [Resolved]
+        private ILinkHandler? linkHandler { get; set; }
 
         private FontUsage fontLarge;
         private FontUsage fontMedium;
@@ -87,13 +90,23 @@ namespace osu.Game.Overlays.Changelog
                 }
             };
 
-            title.AddText(entry.Title, t =>
+            if (string.IsNullOrEmpty(entry.Url))
             {
-                t.Font = fontLarge;
-                t.Colour = entryColour;
-            });
+                title.AddText(entry.Title, t =>
+                {
+                    t.Font = fontLarge;
+                    t.Colour = entryColour;
+                });
+            }
+            else
+            {
+                title.AddLink(entry.Title, () => linkHandler?.HandleLink(entry.Url), entry.Url, t =>
+                {
+                    t.Font = fontLarge;
+                });
+            }
 
-            if (!string.IsNullOrEmpty(entry.Repository))
+            if (!string.IsNullOrEmpty(entry.Repository) && !string.IsNullOrEmpty(entry.GithubUrl))
                 addRepositoryReference(title, entryColour);
 
             if (entry.GithubUser != null)
@@ -104,17 +117,22 @@ namespace osu.Game.Overlays.Changelog
 
         private void addRepositoryReference(LinkFlowContainer title, Color4 entryColour)
         {
+            Debug.Assert(!string.IsNullOrEmpty(entry.Repository));
+            Debug.Assert(!string.IsNullOrEmpty(entry.GithubUrl));
+
             title.AddText(" (", t =>
             {
                 t.Font = fontLarge;
                 t.Colour = entryColour;
             });
+
             title.AddLink($"{entry.Repository.Replace("ppy/", "")}#{entry.GithubPullRequestId}", entry.GithubUrl,
                 t =>
                 {
                     t.Font = fontLarge;
                     t.Colour = entryColour;
                 });
+
             title.AddText(")", t =>
             {
                 t.Font = fontLarge;

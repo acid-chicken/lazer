@@ -1,10 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using osu.Framework.Allocation;
-using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -14,15 +11,13 @@ using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit.Components
 {
-    public class BottomBarContainer : Container
+    public partial class BottomBarContainer : Container
     {
         private const float contents_padding = 15;
 
         protected readonly IBindable<WorkingBeatmap> Beatmap = new Bindable<WorkingBeatmap>();
 
-        protected readonly IBindable<Track> Track = new Bindable<Track>();
-
-        protected readonly Drawable Background;
+        public readonly Drawable Background;
         private readonly Container content;
 
         protected override Container<Drawable> Content => content;
@@ -47,10 +42,9 @@ namespace osu.Game.Screens.Edit.Components
         }
 
         [BackgroundDependencyLoader]
-        private void load(IBindable<WorkingBeatmap> beatmap, EditorClock clock)
+        private void load(IBindable<WorkingBeatmap> beatmap)
         {
             Beatmap.BindTo(beatmap);
-            Track.BindTo(clock.Track);
         }
     }
 }

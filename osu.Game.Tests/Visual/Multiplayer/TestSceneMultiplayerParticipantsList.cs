@@ -23,7 +23,7 @@ using osuTK;
 
 namespace osu.Game.Tests.Visual.Multiplayer
 {
-    public class TestSceneMultiplayerParticipantsList : MultiplayerTestScene
+    public partial class TestSceneMultiplayerParticipantsList : MultiplayerTestScene
     {
         [SetUpSteps]
         public void SetupSteps()
@@ -107,6 +107,7 @@ namespace osu.Game.Tests.Visual.Multiplayer
         [Test]
         public void TestBeatmapDownloadingStates()
         {
+            AddStep("set to unknown", () => MultiplayerClient.ChangeBeatmapAvailability(BeatmapAvailability.Unknown()));
             AddStep("set to no map", () => MultiplayerClient.ChangeBeatmapAvailability(BeatmapAvailability.NotDownloaded()));
             AddStep("set to downloading map", () => MultiplayerClient.ChangeBeatmapAvailability(BeatmapAvailability.Downloading(0)));
 
@@ -197,7 +198,7 @@ namespace osu.Game.Tests.Visual.Multiplayer
 
             AddStep("make second user host", () => MultiplayerClient.TransferHost(3));
 
-            AddUntilStep("kick buttons not visible", () => this.ChildrenOfType<ParticipantPanel.KickButton>().Count(d => d.IsPresent) == 0);
+            AddUntilStep("kick buttons not visible", () => !this.ChildrenOfType<ParticipantPanel.KickButton>().Any(d => d.IsPresent));
 
             AddStep("make local user host again", () => MultiplayerClient.TransferHost(API.LocalUser.Value.Id));
 
@@ -308,6 +309,33 @@ namespace osu.Game.Tests.Visual.Multiplayer
         }
 
         [Test]
+        public void TestUserWithStyle()
+        {
+            AddStep("add users", () =>
+            {
+                MultiplayerClient.AddUser(new APIUser
+                {
+                    Id = 0,
+                    Username = "User 0",
+                    RulesetsStatistics = new Dictionary<string, UserStatistics>
+                    {
+                        {
+                            Ruleset.Value.ShortName,
+                            new UserStatistics { GlobalRank = RNG.Next(1, 100000), }
+                        }
+                    },
+                    CoverUrl = @"https://osu.ppy.sh/images/headers/profile-covers/c3.jpg",
+                });
+
+                MultiplayerClient.ChangeUserStyle(0, 259, 2);
+            });
+
+            AddStep("set beatmap locally available", () => MultiplayerClient.ChangeUserBeatmapAvailability(0, BeatmapAvailability.LocallyAvailable()));
+            AddStep("change user style to beatmap: 258, ruleset: 1", () => MultiplayerClient.ChangeUserStyle(0, 258, 1));
+            AddStep("change user style to beatmap: null, ruleset: null", () => MultiplayerClient.ChangeUserStyle(0, null, null));
+        }
+
+        [Test]
         public void TestModOverlap()
         {
             AddStep("add dummy mods", () =>
@@ -382,6 +410,8 @@ namespace osu.Game.Tests.Visual.Multiplayer
             });
 
             AddUntilStep("wait for list to load", () => participantsList?.IsLoaded == true);
+
+            AddStep("set beatmap available", () => MultiplayerClient.ChangeBeatmapAvailability(BeatmapAvailability.LocallyAvailable()));
         }
 
         private void checkProgressBarVisibility(bool visible) =>

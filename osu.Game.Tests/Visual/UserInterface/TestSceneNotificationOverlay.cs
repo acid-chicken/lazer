@@ -1,22 +1,29 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Testing;
 using osu.Framework.Utils;
+using osu.Game.Database;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Updater;
+using osuTK;
+using osuTK.Input;
 
 namespace osu.Game.Tests.Visual.UserInterface
 {
     [TestFixture]
-    public class TestSceneNotificationOverlay : OsuTestScene
+    public partial class TestSceneNotificationOverlay : OsuManualInputManagerTestScene
     {
         private NotificationOverlay notificationOverlay = null!;
 
@@ -26,13 +33,17 @@ namespace osu.Game.Tests.Visual.UserInterface
 
         public double TimeToCompleteProgress { get; set; } = 2000;
 
+        private readonly UserLookupCache userLookupCache = new TestUserLookupCache();
+
         [SetUp]
         public void SetUp() => Schedule(() =>
         {
+            InputManager.MoveMouseTo(Vector2.Zero);
+
             TimeToCompleteProgress = 2000;
             progressingNotifications.Clear();
 
-            Content.Children = new Drawable[]
+            Children = new Drawable[]
             {
                 notificationOverlay = new NotificationOverlay
                 {
@@ -42,8 +53,263 @@ namespace osu.Game.Tests.Visual.UserInterface
                 displayedCount = new OsuSpriteText()
             };
 
-            notificationOverlay.UnreadCount.ValueChanged += count => { displayedCount.Text = $"displayed count: {count.NewValue}"; };
+            notificationOverlay.UnreadCount.ValueChanged += count => { displayedCount.Text = $"unread count: {count.NewValue}"; };
         });
+
+        [Test]
+        public void TestBasicFlow()
+        {
+            setState(Visibility.Visible);
+            AddStep(@"simple #1", sendHelloNotification);
+            AddStep(@"simple #2", sendAmazingNotification);
+            AddStep(@"progress #1", sendUploadProgress);
+            AddStep(@"progress #2", sendDownloadProgress);
+            AddStep(@"User notification", sendUserNotification);
+
+            checkProgressingCount(2);
+
+            setState(Visibility.Hidden);
+
+            AddRepeatStep(@"add many simple", sendManyNotifications, 3);
+
+            waitForCompletion();
+
+            AddStep(@"progress #3", sendUploadProgress);
+
+            checkProgressingCount(1);
+
+            checkDisplayedCount(33);
+
+            waitForCompletion();
+        }
+
+        [Test]
+        public void TestNormalDoesForwardToOverlay()
+        {
+            SimpleNotification notification = null!;
+
+            AddStep(@"simple #1", () => notificationOverlay.Post(notification = new SimpleNotification
+            {
+                Text = @"This shouldn't annoy you too much",
+                Transient = false,
+            }));
+
+            AddAssert("notification in toast tray", () => notification.IsInToastTray, () => Is.True);
+            AddUntilStep("wait for dismissed", () => notification.IsInToastTray, () => Is.False);
+
+            checkDisplayedCount(1);
+        }
+
+        [Test]
+        public void TestTransientDoesNotForwardToOverlay()
+        {
+            SimpleNotification notification = null!;
+
+            AddStep(@"simple #1", () => notificationOverlay.Post(notification = new SimpleNotification
+            {
+                Text = @"This shouldn't annoy you too much",
+                Transient = true,
+            }));
+
+            AddAssert("notification in toast tray", () => notification.IsInToastTray, () => Is.True);
+            AddUntilStep("wait for dismissed", () => notification.IsInToastTray, () => Is.False);
+
+            checkDisplayedCount(0);
+        }
+
+        [Test]
+        public void TestForwardWithFlingRight()
+        {
+            bool activated = false;
+            SimpleNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new SimpleNotification
+                {
+                    Text = @"Welcome to osu!. Enjoy your stay!",
+                    Activated = () => activated = true,
+                });
+            });
+
+            AddStep("start drag", () =>
+            {
+                InputManager.MoveMouseTo(notification.ChildrenOfType<Notification>().Single());
+                InputManager.PressButton(MouseButton.Left);
+                InputManager.MoveMouseTo(notification.ChildrenOfType<Notification>().Single().ScreenSpaceDrawQuad.Centre + new Vector2(500, 0));
+            });
+
+            AddStep("fling away", () =>
+            {
+                InputManager.ReleaseButton(MouseButton.Left);
+            });
+
+            AddAssert("was not closed", () => !notification.WasClosed);
+            AddAssert("was not activated", () => !activated);
+            AddAssert("is not read", () => !notification.Read);
+            AddAssert("is not toast", () => !notification.IsInToastTray);
+
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+            AddAssert("unread count one", () => notificationOverlay.UnreadCount.Value == 1);
+        }
+
+        [Test]
+        public void TestDismissWithoutActivationFling()
+        {
+            bool activated = false;
+            SimpleNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new SimpleNotification
+                {
+                    Text = @"Welcome to osu!. Enjoy your stay!",
+                    Activated = () => activated = true,
+                });
+            });
+
+            AddStep("start drag", () =>
+            {
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single());
+                InputManager.PressButton(MouseButton.Left);
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single().ScreenSpaceDrawQuad.Centre + new Vector2(-500, 0));
+            });
+
+            AddStep("fling away", () =>
+            {
+                InputManager.ReleaseButton(MouseButton.Left);
+            });
+
+            AddUntilStep("wait for closed", () => notification.WasClosed);
+            AddAssert("was not activated", () => !activated);
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+            AddAssert("unread count zero", () => notificationOverlay.UnreadCount.Value == 0);
+        }
+
+        [Test]
+        public void TestProgressNotificationCantBeFlung()
+        {
+            bool activated = false;
+            ProgressNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new ProgressNotification
+                {
+                    Text = @"Uploading to BSS...",
+                    CompletionText = "Uploaded to BSS!",
+                    Activated = () => activated = true,
+                });
+
+                progressingNotifications.Add(notification);
+            });
+
+            AddStep("start drag", () =>
+            {
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single());
+                InputManager.PressButton(MouseButton.Left);
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single().ScreenSpaceDrawQuad.Centre + new Vector2(-500, 0));
+            });
+
+            AddStep("attempt fling", () =>
+            {
+                InputManager.ReleaseButton(MouseButton.Left);
+            });
+
+            AddUntilStep("was not closed", () => !notification.WasClosed);
+            AddUntilStep("was not cancelled", () => notification.State == ProgressNotificationState.Active);
+            AddAssert("was not activated", () => !activated);
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+
+            AddUntilStep("was completed", () => notification.State == ProgressNotificationState.Completed);
+        }
+
+        [Test]
+        public void TestDismissWithoutActivationCloseButton()
+        {
+            bool activated = false;
+            SimpleNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new SimpleNotification
+                {
+                    Text = @"Welcome to osu!. Enjoy your stay!",
+                    Activated = () => activated = true,
+                });
+            });
+
+            AddStep("click to activate", () =>
+            {
+                InputManager.MoveMouseTo(notificationOverlay
+                                         .ChildrenOfType<Notification>().Single()
+                                         .ChildrenOfType<Notification.CloseButton>().Single());
+                InputManager.Click(MouseButton.Left);
+            });
+
+            AddUntilStep("wait for closed", () => notification.WasClosed);
+            AddAssert("was not activated", () => !activated);
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+            AddAssert("unread count zero", () => notificationOverlay.UnreadCount.Value == 0);
+        }
+
+        [Test]
+        public void TestDismissWithoutActivationRightClick()
+        {
+            bool activated = false;
+            SimpleNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new SimpleNotification
+                {
+                    Text = @"Welcome to osu!. Enjoy your stay!",
+                    Activated = () => activated = true,
+                });
+            });
+
+            AddStep("click to activate", () =>
+            {
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single());
+                InputManager.Click(MouseButton.Right);
+            });
+
+            AddUntilStep("wait for closed", () => notification.WasClosed);
+            AddAssert("was not activated", () => !activated);
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+        }
+
+        [Test]
+        public void TestActivate()
+        {
+            bool activated = false;
+            SimpleNotification notification = null!;
+
+            AddStep("post", () =>
+            {
+                activated = false;
+                notificationOverlay.Post(notification = new SimpleNotification
+                {
+                    Text = @"Welcome to osu!. Enjoy your stay!",
+                    Activated = () => activated = true,
+                });
+            });
+
+            AddStep("click to activate", () =>
+            {
+                InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<Notification>().Single());
+                InputManager.Click(MouseButton.Left);
+            });
+
+            AddUntilStep("wait for closed", () => notification.WasClosed);
+            AddAssert("was activated", () => activated);
+            AddStep("reset mouse position", () => InputManager.MoveMouseTo(Vector2.Zero));
+        }
 
         [Test]
         public void TestPresence()
@@ -68,6 +334,31 @@ namespace osu.Game.Tests.Visual.UserInterface
 
             AddUntilStep("wait tray not present", () => !notificationOverlay.ChildrenOfType<NotificationOverlayToastTray>().Single().IsPresent);
             AddUntilStep("wait overlay not present", () => !notificationOverlay.IsPresent);
+        }
+
+        [Test]
+        public void TestProgressClick()
+        {
+            ProgressNotification notification = null!;
+
+            AddStep("add progress notification", () =>
+            {
+                notification = new ProgressNotification
+                {
+                    Text = @"Uploading to BSS...",
+                    CompletionText = "Uploaded to BSS!",
+                };
+                notificationOverlay.Post(notification);
+                progressingNotifications.Add(notification);
+            });
+
+            AddStep("hover over notification", () => InputManager.MoveMouseTo(notificationOverlay.ChildrenOfType<ProgressNotification>().Single()));
+
+            AddStep("left click", () => InputManager.Click(MouseButton.Left));
+            AddAssert("not cancelled", () => notification.State == ProgressNotificationState.Active);
+
+            AddStep("right click", () => InputManager.Click(MouseButton.Right));
+            AddAssert("cancelled", () => notification.State == ProgressNotificationState.Cancelled);
         }
 
         [Test]
@@ -112,6 +403,8 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddUntilStep("wait completion", () => notification.State == ProgressNotificationState.Completed);
 
             AddAssert("Completion toast shown", () => notificationOverlay.ToastCount == 1);
+            AddUntilStep("wait forwarded", () => notificationOverlay.ToastCount == 0);
+            AddAssert("only one unread", () => notificationOverlay.UnreadCount.Value == 1);
         }
 
         [Test]
@@ -135,29 +428,52 @@ namespace osu.Game.Tests.Visual.UserInterface
         }
 
         [Test]
-        public void TestBasicFlow()
+        public void TestReadState()
         {
-            setState(Visibility.Visible);
-            AddStep(@"simple #1", sendHelloNotification);
-            AddStep(@"simple #2", sendAmazingNotification);
-            AddStep(@"progress #1", sendUploadProgress);
-            AddStep(@"progress #2", sendDownloadProgress);
+            SimpleNotification notification = null!;
+            AddStep(@"post", () => notificationOverlay.Post(notification = new BackgroundNotification { Text = @"Welcome to osu!. Enjoy your stay!" }));
+            AddUntilStep("check is toast", () => notification.IsInToastTray);
+            AddAssert("light is not visible", () => notification.ChildrenOfType<Notification.NotificationLight>().Single().Alpha == 0);
 
-            checkProgressingCount(2);
+            AddUntilStep("wait for forward to overlay", () => !notification.IsInToastTray);
+
+            setState(Visibility.Visible);
+            AddAssert("state is not read", () => !notification.Read);
+            AddUntilStep("light is visible", () => notification.ChildrenOfType<Notification.NotificationLight>().Single().Alpha == 1);
 
             setState(Visibility.Hidden);
+            setState(Visibility.Visible);
+            AddAssert("state is read", () => notification.Read);
+            AddUntilStep("light is not visible", () => notification.ChildrenOfType<Notification.NotificationLight>().Single().Alpha == 0);
+        }
 
-            AddRepeatStep(@"add many simple", sendManyNotifications, 3);
+        [Test]
+        public void TestUpdateNotificationFlow()
+        {
+            bool applyUpdate = false;
 
-            waitForCompletion();
+            AddStep(@"post update", () =>
+            {
+                applyUpdate = false;
 
-            AddStep(@"progress #3", sendUploadProgress);
+                var updateNotification = new UpdateManager.UpdateProgressNotification
+                {
+                    CompletionClickAction = () => applyUpdate = true
+                };
+
+                notificationOverlay.Post(updateNotification);
+                progressingNotifications.Add(updateNotification);
+            });
 
             checkProgressingCount(1);
-
-            checkDisplayedCount(33);
-
             waitForCompletion();
+
+            UpdateManager.UpdateApplicationCompleteNotification? completionNotification = null;
+            AddUntilStep("wait for completion notification",
+                () => (completionNotification = notificationOverlay.ChildrenOfType<UpdateManager.UpdateApplicationCompleteNotification>().SingleOrDefault()) != null);
+            AddStep("click notification", () => completionNotification?.TriggerClick());
+
+            AddUntilStep("wait for update applied", () => applyUpdate);
         }
 
         [Test]
@@ -215,11 +531,19 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddRepeatStep("send barrage", sendBarrage, 10);
         }
 
+        [Test]
+        public void TestServerShuttingDownNotification()
+        {
+            AddStep("post with 5 seconds", () => notificationOverlay.Post(new ServerShutdownNotification(TimeSpan.FromSeconds(5))));
+            AddStep("post with 30 seconds", () => notificationOverlay.Post(new ServerShutdownNotification(TimeSpan.FromSeconds(30))));
+            AddStep("post with 6 hours", () => notificationOverlay.Post(new ServerShutdownNotification(TimeSpan.FromHours(6))));
+        }
+
         protected override void Update()
         {
             base.Update();
 
-            progressingNotifications.RemoveAll(n => n.State == ProgressNotificationState.Completed);
+            progressingNotifications.RemoveAll(n => n.State == ProgressNotificationState.Completed && n.WasClosed);
 
             if (progressingNotifications.Count(n => n.State == ProgressNotificationState.Active) < 3)
             {
@@ -250,6 +574,16 @@ namespace osu.Game.Tests.Visual.UserInterface
             };
             notificationOverlay.Post(n);
             progressingNotifications.Add(n);
+        }
+
+        private void sendUserNotification()
+        {
+            var user = userLookupCache.GetUserAsync(0).GetResultSafely();
+            if (user == null) return;
+
+            var n = new UserAvatarNotification(user, $"{user.Username} invited you to a multiplayer match!");
+
+            notificationOverlay.Post(n);
         }
 
         private void sendUploadProgress()
@@ -332,14 +666,20 @@ namespace osu.Game.Tests.Visual.UserInterface
                 notificationOverlay.Post(new SimpleNotification { Text = @"Spam incoming!!" });
         }
 
-        private class BackgroundNotification : SimpleNotification
+        private partial class BackgroundNotification : SimpleNotification
         {
-            public override bool IsImportant => false;
+            public BackgroundNotification()
+            {
+                IsImportant = false;
+            }
         }
 
-        private class BackgroundProgressNotification : ProgressNotification
+        private partial class BackgroundProgressNotification : ProgressNotification
         {
-            public override bool IsImportant => false;
+            public BackgroundProgressNotification()
+            {
+                IsImportant = false;
+            }
         }
     }
 }
