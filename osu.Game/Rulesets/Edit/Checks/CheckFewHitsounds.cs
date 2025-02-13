@@ -1,8 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Audio;
@@ -116,7 +114,7 @@ namespace osu.Game.Rulesets.Edit.Checks
                 ++objectsWithoutHitsounds;
         }
 
-        private bool isHitsound(HitSampleInfo sample) => HitSampleInfo.AllAdditions.Any(sample.Name.Contains);
+        private bool isHitsound(HitSampleInfo sample) => HitSampleInfo.ALL_ADDITIONS.Any(sample.Name.Contains);
         private bool isHitnormal(HitSampleInfo sample) => sample.Name.Contains(HitSampleInfo.HIT_NORMAL);
 
         public abstract class IssueTemplateLongPeriod : IssueTemplate

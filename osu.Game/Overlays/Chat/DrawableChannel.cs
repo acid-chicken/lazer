@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using JetBrains.Annotations;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -17,7 +18,7 @@ using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Chat
 {
-    public class DrawableChannel : Container
+    public partial class DrawableChannel : Container
     {
         public readonly Channel Channel;
         protected FillFlowContainer ChatLineFlow;
@@ -61,7 +62,7 @@ namespace osu.Game.Overlays.Chat
                     Padding = new MarginPadding { Bottom = 5 },
                     Child = ChatLineFlow = new FillFlowContainer
                     {
-                        Padding = new MarginPadding { Horizontal = 10 },
+                        Padding = new MarginPadding { Left = 3, Right = 10 },
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
                         Direction = FillDirection.Vertical,
@@ -84,6 +85,25 @@ namespace osu.Game.Overlays.Chat
             highlightedMessage.BindValueChanged(_ => processMessageHighlighting(), true);
         }
 
+        protected override void Update()
+        {
+            base.Update();
+
+            long? lastMinutes = null;
+
+            for (int i = 0; i < ChatLineFlow.Count; i++)
+            {
+                if (ChatLineFlow[i] is ChatLine chatline)
+                {
+                    long minutes = chatline.Message.Timestamp.ToUnixTimeSeconds() / 60;
+
+                    chatline.AlternatingBackground = i % 2 == 0;
+                    chatline.RequiresTimestamp = minutes != lastMinutes;
+                    lastMinutes = minutes;
+                }
+            }
+        }
+
         /// <summary>
         /// Processes any pending message in <see cref="highlightedMessage"/>.
         /// </summary>
@@ -97,7 +117,7 @@ namespace osu.Game.Overlays.Chat
             if (chatLine == null)
                 return;
 
-            float center = scroll.GetChildPosInContent(chatLine, chatLine.DrawSize / 2) - scroll.DisplayableContent / 2;
+            double center = scroll.GetChildPosInContent(chatLine, chatLine.DrawSize / 2) - scroll.DisplayableContent / 2;
             scroll.ScrollTo(Math.Clamp(center, 0, scroll.ScrollableExtent));
             chatLine.Highlight();
 
@@ -113,6 +133,7 @@ namespace osu.Game.Overlays.Chat
             Channel.PendingMessageResolved -= pendingMessageResolved;
         }
 
+        [CanBeNull]
         protected virtual ChatLine CreateChatLine(Message m) => new ChatLine(m);
 
         protected virtual DaySeparator CreateDaySeparator(DateTimeOffset time) => new DaySeparator(time);
@@ -134,35 +155,27 @@ namespace osu.Game.Overlays.Chat
 
             foreach (var message in displayMessages)
             {
-                if (lastMessage == null || lastMessage.Timestamp.ToLocalTime().Date != message.Timestamp.ToLocalTime().Date)
-                    ChatLineFlow.Add(CreateDaySeparator(message.Timestamp));
+                addDaySeparatorIfRequired(lastMessage, message);
 
-                ChatLineFlow.Add(CreateChatLine(message));
-                lastMessage = message;
+                var chatLine = CreateChatLine(message);
+
+                if (chatLine != null)
+                {
+                    ChatLineFlow.Add(chatLine);
+                    lastMessage = message;
+                }
             }
 
             var staleMessages = chatLines.Where(c => c.LifetimeEnd == double.MaxValue).ToArray();
+
             int count = staleMessages.Length - Channel.MAX_HISTORY;
 
             if (count > 0)
             {
-                void expireAndAdjustScroll(Drawable d)
-                {
-                    scroll.OffsetScrollPosition(-d.DrawHeight);
-                    d.Expire();
-                }
-
                 for (int i = 0; i < count; i++)
                     expireAndAdjustScroll(staleMessages[i]);
 
-                // remove all adjacent day separators after stale message removal
-                for (int i = 0; i < ChatLineFlow.Count - 1; i++)
-                {
-                    if (!(ChatLineFlow[i] is DaySeparator)) break;
-                    if (!(ChatLineFlow[i + 1] is DaySeparator)) break;
-
-                    expireAndAdjustScroll(ChatLineFlow[i]);
-                }
+                removeAdjacentDaySeparators();
             }
 
             // due to the scroll adjusts from old messages removal above, a scroll-to-end must be enforced,
@@ -183,9 +196,45 @@ namespace osu.Game.Overlays.Chat
 
                 ChatLineFlow.Remove(found, false);
                 found.Message = updated;
+
+                addDaySeparatorIfRequired(chatLines.LastOrDefault()?.Message, updated);
                 ChatLineFlow.Add(found);
             }
         });
+
+        private void addDaySeparatorIfRequired(Message lastMessage, Message message)
+        {
+            if (lastMessage == null || lastMessage.Timestamp.ToLocalTime().Date != message.Timestamp.ToLocalTime().Date)
+            {
+                // A day separator is displayed even if no messages are in the channel.
+                // If there are no messages after it, the simplest way to ensure it is fresh is to remove it
+                // and add a new one instead.
+                if (ChatLineFlow.LastOrDefault() is DaySeparator ds)
+                    ChatLineFlow.Remove(ds, true);
+
+                ChatLineFlow.Add(CreateDaySeparator(message.Timestamp));
+
+                removeAdjacentDaySeparators();
+            }
+        }
+
+        private void removeAdjacentDaySeparators()
+        {
+            // remove all adjacent day separators after stale message removal
+            for (int i = 0; i < ChatLineFlow.Count - 1; i++)
+            {
+                if (!(ChatLineFlow[i] is DaySeparator)) break;
+                if (!(ChatLineFlow[i + 1] is DaySeparator)) break;
+
+                expireAndAdjustScroll(ChatLineFlow[i]);
+            }
+        }
+
+        private void expireAndAdjustScroll(Drawable d)
+        {
+            scroll.OffsetScrollPosition(-d.DrawHeight);
+            d.Expire();
+        }
 
         private void messageRemoved(Message removed) => Schedule(() =>
         {

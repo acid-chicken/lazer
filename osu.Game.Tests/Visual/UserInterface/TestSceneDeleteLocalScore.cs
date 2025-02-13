@@ -32,7 +32,7 @@ using osuTK.Input;
 
 namespace osu.Game.Tests.Visual.UserInterface
 {
-    public class TestSceneDeleteLocalScore : OsuManualInputManagerTestScene
+    public partial class TestSceneDeleteLocalScore : OsuManualInputManagerTestScene
     {
         private readonly ContextMenuContainer contextMenuContainer;
         private readonly BeatmapLeaderboard leaderboard;
@@ -94,6 +94,7 @@ namespace osu.Game.Tests.Visual.UserInterface
                     {
                         OnlineID = i,
                         BeatmapInfo = beatmapInfo,
+                        BeatmapHash = beatmapInfo.Hash,
                         Accuracy = RNG.NextDouble(),
                         TotalScore = RNG.Next(1, 1000000),
                         MaxCombo = RNG.Next(1, 1000),
@@ -103,7 +104,7 @@ namespace osu.Game.Tests.Visual.UserInterface
                         Files = { new RealmNamedFileUsage(new RealmFile { Hash = $"{i}" }, string.Empty) }
                     };
 
-                    importedScores.Add(scoreManager.Import(score).Value);
+                    importedScores.Add(scoreManager.Import(score)!.Value);
                 }
             });
         });
@@ -150,7 +151,7 @@ namespace osu.Game.Tests.Visual.UserInterface
 
             AddStep("click delete option", () =>
             {
-                InputManager.MoveMouseTo(contextMenuContainer.ChildrenOfType<DrawableOsuMenuItem>().First(i => i.Item.Text.Value.ToString().ToLowerInvariant() == "delete"));
+                InputManager.MoveMouseTo(contextMenuContainer.ChildrenOfType<DrawableOsuMenuItem>().First(i => string.Equals(i.Item.Text.Value.ToString(), "delete", System.StringComparison.OrdinalIgnoreCase)));
                 InputManager.Click(MouseButton.Left);
             });
 
@@ -163,7 +164,7 @@ namespace osu.Game.Tests.Visual.UserInterface
                 InputManager.PressButton(MouseButton.Left);
             });
 
-            AddUntilStep("wait for fetch", () => leaderboard.Scores != null);
+            AddUntilStep("wait for fetch", () => leaderboard.Scores.Any());
             AddUntilStep("score removed from leaderboard", () => leaderboard.Scores.All(s => s.OnlineID != scoreBeingDeleted.OnlineID));
 
             // "Clean up"
@@ -174,7 +175,7 @@ namespace osu.Game.Tests.Visual.UserInterface
         public void TestDeleteViaDatabase()
         {
             AddStep("delete top score", () => scoreManager.Delete(importedScores[0]));
-            AddUntilStep("wait for fetch", () => leaderboard.Scores != null);
+            AddUntilStep("wait for fetch", () => leaderboard.Scores.Any());
             AddUntilStep("score removed from leaderboard", () => leaderboard.Scores.All(s => s.OnlineID != importedScores[0].OnlineID));
         }
     }
