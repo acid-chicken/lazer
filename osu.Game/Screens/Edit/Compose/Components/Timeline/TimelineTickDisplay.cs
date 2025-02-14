@@ -1,15 +1,13 @@
-// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Caching;
 using osu.Framework.Graphics;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Screens.Edit.Components.Timelines.Summary.Parts;
 using osu.Game.Screens.Edit.Components.Timelines.Summary.Visualisations;
@@ -17,40 +15,48 @@ using osuTK;
 
 namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 {
-    public class TimelineTickDisplay : TimelinePart<PointVisualisation>
+    public partial class TimelineTickDisplay : TimelinePart<PointVisualisation>
     {
-        [Resolved]
-        private EditorBeatmap beatmap { get; set; }
+        public const float TICK_WIDTH = 3;
+
+        // With current implementation every tick in the sub-tree should be visible, no need to check whether they are masked away.
+        public override bool UpdateSubTreeMasking() => false;
 
         [Resolved]
-        private Bindable<WorkingBeatmap> working { get; set; }
+        private EditorBeatmap beatmap { get; set; } = null!;
 
         [Resolved]
-        private BindableBeatDivisor beatDivisor { get; set; }
-
-        [Resolved(CanBeNull = true)]
-        private IEditorChangeHandler changeHandler { get; set; }
+        private Bindable<WorkingBeatmap> working { get; set; } = null!;
 
         [Resolved]
-        private OsuColour colours { get; set; }
+        private BindableBeatDivisor beatDivisor { get; set; } = null!;
 
-        private static readonly int highest_divisor = BindableBeatDivisor.PREDEFINED_DIVISORS.Last();
+        [Resolved]
+        private IEditorChangeHandler? changeHandler { get; set; }
+
+        [Resolved]
+        private OsuColour colours { get; set; } = null!;
 
         public TimelineTickDisplay()
         {
             RelativeSizeAxes = Axes.Both;
         }
 
+        private readonly BindableBool showTimingChanges = new BindableBool(true);
+
         private readonly Cached tickCache = new Cached();
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(OsuConfigManager configManager)
         {
             beatDivisor.BindValueChanged(_ => invalidateTicks());
 
             if (changeHandler != null)
                 // currently this is the best way to handle any kind of timing changes.
                 changeHandler.OnStateChange += invalidateTicks;
+
+            configManager.BindWith(OsuSetting.EditorTimelineShowTimingChanges, showTimingChanges);
+            showTimingChanges.BindValueChanged(_ => invalidateTicks());
         }
 
         private void invalidateTicks()
@@ -73,27 +79,26 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         /// </summary>
         private float? nextMaxTick;
 
-        [Resolved(canBeNull: true)]
-        private Timeline timeline { get; set; }
+        [Resolved]
+        private Timeline? timeline { get; set; }
 
         protected override void Update()
         {
             base.Update();
 
-            if (timeline != null)
+            if (timeline == null || DrawWidth <= 0) return;
+
+            (float, float) newRange = (
+                (ToLocalSpace(timeline.ScreenSpaceDrawQuad.TopLeft).X - PointVisualisation.MAX_WIDTH * 2) / DrawWidth * Content.RelativeChildSize.X,
+                (ToLocalSpace(timeline.ScreenSpaceDrawQuad.TopRight).X + PointVisualisation.MAX_WIDTH * 2) / DrawWidth * Content.RelativeChildSize.X);
+
+            if (visibleRange != newRange)
             {
-                var newRange = (
-                    (ToLocalSpace(timeline.ScreenSpaceDrawQuad.TopLeft).X - PointVisualisation.MAX_WIDTH * 2) / DrawWidth * Content.RelativeChildSize.X,
-                    (ToLocalSpace(timeline.ScreenSpaceDrawQuad.TopRight).X + PointVisualisation.MAX_WIDTH * 2) / DrawWidth * Content.RelativeChildSize.X);
+                visibleRange = newRange;
 
-                if (visibleRange != newRange)
-                {
-                    visibleRange = newRange;
-
-                    // actual regeneration only needs to occur if we've passed one of the known next min/max tick boundaries.
-                    if (nextMinTick == null || nextMaxTick == null || (visibleRange.min < nextMinTick || visibleRange.max > nextMaxTick))
-                        tickCache.Invalidate();
-                }
+                // actual regeneration only needs to occur if we've passed one of the known next min/max tick boundaries.
+                if (nextMinTick == null || nextMaxTick == null || (visibleRange.min < nextMinTick || visibleRange.max > nextMaxTick))
+                    tickCache.Invalidate();
             }
 
             if (!tickCache.IsValid)
@@ -135,15 +140,15 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
                         // even though "bar lines" take up the full vertical space, we render them in two pieces because it allows for less anchor/origin churn.
 
-                        Vector2 size = Vector2.One;
-
-                        if (indexInBar != 0)
-                            size = BindableBeatDivisor.GetSize(divisor);
+                        var size = indexInBar == 0
+                            ? new Vector2(1.3f, 1)
+                            : BindableBeatDivisor.GetSize(divisor);
 
                         var line = getNextUsableLine();
                         line.X = xPos;
-                        line.Width = PointVisualisation.MAX_WIDTH * size.X;
-                        line.Height = 0.9f * size.Y;
+
+                        line.Width = TICK_WIDTH * size.X;
+                        line.Height = size.Y;
                         line.Colour = colour;
                     }
 
@@ -155,7 +160,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
             // save a few drawables beyond the currently used for edge cases.
             while (drawableIndex < Math.Min(usedDrawables + 16, Count))
-                Children[drawableIndex++].Hide();
+                Children[drawableIndex++].Alpha = 0;
 
             // expire any excess
             while (drawableIndex < Count)
@@ -166,13 +171,20 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             Drawable getNextUsableLine()
             {
                 PointVisualisation point;
+
                 if (drawableIndex >= Count)
-                    Add(point = new PointVisualisation());
+                {
+                    Add(point = new PointVisualisation(0)
+                    {
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.Centre,
+                    });
+                }
                 else
                     point = Children[drawableIndex];
 
                 drawableIndex++;
-                point.Show();
+                point.Alpha = 1;
 
                 return point;
             }
