@@ -1,8 +1,6 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using osuTK.Graphics;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.Color4Extensions;
@@ -12,19 +10,13 @@ using osu.Framework.Graphics.UserInterface;
 
 namespace osu.Game.Graphics.UserInterface
 {
-    public class OsuContextMenu : OsuMenu
+    public partial class OsuContextMenu : OsuMenu
     {
-        private const int fade_duration = 250;
-
         [Resolved]
-        private OsuContextMenuSamples samples { get; set; }
+        private OsuMenuSamples menuSamples { get; set; } = null!;
 
-        // todo: this shouldn't be required after https://github.com/ppy/osu-framework/issues/4519 is fixed.
-        private bool wasOpened;
-        private readonly bool playClickSample;
-
-        public OsuContextMenu(bool playClickSample = false)
-            : base(Direction.Vertical)
+        public OsuContextMenu(bool playSamples)
+            : base(Direction.Vertical, topLevelMenu: false, playSamples)
         {
             MaskingContainer.CornerRadius = 5;
             MaskingContainer.EdgeEffect = new EdgeEffectParameters
@@ -37,8 +29,6 @@ namespace osu.Game.Graphics.UserInterface
             ItemsContainer.Padding = new MarginPadding { Vertical = DrawableOsuMenuItem.MARGIN_VERTICAL };
 
             MaxHeight = 250;
-
-            this.playClickSample = playClickSample;
         }
 
         [BackgroundDependencyLoader]
@@ -49,27 +39,12 @@ namespace osu.Game.Graphics.UserInterface
 
         protected override void AnimateOpen()
         {
-            this.FadeIn(fade_duration, Easing.OutQuint);
+            if (PlaySamples && !WasOpened)
+                menuSamples.PlayClickSample();
 
-            if (playClickSample)
-                samples.PlayClickSample();
-
-            if (!wasOpened)
-                samples.PlayOpenSample();
-
-            wasOpened = true;
+            base.AnimateOpen();
         }
 
-        protected override void AnimateClose()
-        {
-            this.FadeOut(fade_duration, Easing.OutQuint);
-
-            if (wasOpened)
-                samples.PlayCloseSample();
-
-            wasOpened = false;
-        }
-
-        protected override Menu CreateSubMenu() => new OsuContextMenu();
+        protected override Menu CreateSubMenu() => new OsuContextMenu(false); // sub menu samples are handled by OsuMenu.OnSubmenuOpen.
     }
 }

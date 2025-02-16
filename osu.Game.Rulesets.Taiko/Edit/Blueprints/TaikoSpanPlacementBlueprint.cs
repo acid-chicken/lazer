@@ -1,11 +1,11 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
+using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Input.Events;
+using osu.Framework.Utils;
 using osu.Game.Rulesets.Edit;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Types;
@@ -16,7 +16,7 @@ using osuTK.Input;
 
 namespace osu.Game.Rulesets.Taiko.Edit.Blueprints
 {
-    public class TaikoSpanPlacementBlueprint : PlacementBlueprint
+    public partial class TaikoSpanPlacementBlueprint : HitObjectPlacementBlueprint
     {
         private readonly HitPiece headPiece;
         private readonly HitPiece tailPiece;
@@ -25,10 +25,15 @@ namespace osu.Game.Rulesets.Taiko.Edit.Blueprints
 
         private readonly IHasDuration spanPlacementObject;
 
+        [Resolved]
+        private TaikoHitObjectComposer? composer { get; set; }
+
+        protected override bool IsValidForPlacement => Precision.DefinitelyBigger(spanPlacementObject.Duration, 0);
+
         public TaikoSpanPlacementBlueprint(HitObject hitObject)
             : base(hitObject)
         {
-            spanPlacementObject = hitObject as IHasDuration;
+            spanPlacementObject = (hitObject as IHasDuration)!;
 
             RelativeSizeAxes = Axes.Both;
 
@@ -36,21 +41,27 @@ namespace osu.Game.Rulesets.Taiko.Edit.Blueprints
             {
                 headPiece = new HitPiece
                 {
-                    Size = new Vector2(TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.DEFAULT_HEIGHT)
+                    Size = new Vector2(TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.BASE_HEIGHT)
                 },
                 lengthPiece = new LengthPiece
                 {
-                    Height = TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.DEFAULT_HEIGHT
+                    Height = TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.BASE_HEIGHT
                 },
                 tailPiece = new HitPiece
                 {
-                    Size = new Vector2(TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.DEFAULT_HEIGHT)
+                    Size = new Vector2(TaikoHitObject.DEFAULT_SIZE * TaikoPlayfield.BASE_HEIGHT)
                 }
             };
         }
 
         private double originalStartTime;
         private Vector2 originalPosition;
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            BeginPlacement();
+        }
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
@@ -67,12 +78,14 @@ namespace osu.Game.Rulesets.Taiko.Edit.Blueprints
                 return;
 
             base.OnMouseUp(e);
-            EndPlacement(spanPlacementObject.Duration > 0);
+            EndPlacement(true);
         }
 
-        public override void UpdateTimeAndPosition(SnapResult result)
+        public override SnapResult UpdateTimeAndPosition(Vector2 screenSpacePosition, double fallbackTime)
         {
-            base.UpdateTimeAndPosition(result);
+            var result = composer?.FindSnappedPositionAndTime(screenSpacePosition) ?? new SnapResult(screenSpacePosition, fallbackTime);
+
+            base.UpdateTimeAndPosition(result.ScreenSpacePosition, result.Time ?? fallbackTime);
 
             if (PlacementActive == PlacementState.Active)
             {
@@ -107,6 +120,8 @@ namespace osu.Game.Rulesets.Taiko.Edit.Blueprints
                     originalPosition = ToLocalSpace(result.ScreenSpacePosition);
                 }
             }
+
+            return result;
         }
     }
 }

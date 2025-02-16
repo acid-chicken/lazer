@@ -2,29 +2,38 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
+using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
+using osu.Game.Database;
 using osu.Game.Online.API;
+using osu.Game.Overlays;
+using osu.Game.Overlays.Dialog;
 using osu.Game.Screens.Select;
 using osu.Game.Screens.Select.Carousel;
+using osu.Game.Screens.Select.Filter;
+using osu.Game.Tests.Beatmaps;
 using osu.Game.Tests.Online;
 using osu.Game.Tests.Resources;
+using osuTK.Input;
 
 namespace osu.Game.Tests.Visual.SongSelect
 {
     [TestFixture]
-    public class TestSceneUpdateBeatmapSetButton : OsuManualInputManagerTestScene
+    public partial class TestSceneUpdateBeatmapSetButton : OsuManualInputManagerTestScene
     {
         private BeatmapCarousel carousel = null!;
 
         private TestSceneOnlinePlayBeatmapAvailabilityTracker.TestBeatmapModelDownloader beatmapDownloader = null!;
 
         private BeatmapSetInfo testBeatmapSetInfo = null!;
+
+        [Cached(typeof(BeatmapStore))]
+        private TestBeatmapStore beatmaps = new TestBeatmapStore();
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
         {
@@ -41,17 +50,7 @@ namespace osu.Game.Tests.Visual.SongSelect
         [SetUpSteps]
         public void SetUpSteps()
         {
-            AddStep("create carousel", () =>
-            {
-                Child = carousel = new BeatmapCarousel
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    BeatmapSets = new List<BeatmapSetInfo>
-                    {
-                        (testBeatmapSetInfo = TestResources.CreateTestBeatmapSetInfo()),
-                    }
-                };
-            });
+            AddStep("create carousel", () => Child = createCarousel());
 
             AddUntilStep("wait for load", () => carousel.BeatmapSetsLoaded);
 
@@ -142,7 +141,7 @@ namespace osu.Game.Tests.Visual.SongSelect
 
                     if (testRequest.Progress >= 0.5f)
                     {
-                        testRequest.TriggerFailure(new Exception());
+                        testRequest.TriggerFailure(new InvalidOperationException());
                         return true;
                     }
                 }
@@ -151,6 +150,113 @@ namespace osu.Game.Tests.Visual.SongSelect
             });
 
             AddUntilStep("wait for button enabled", () => getUpdateButton()?.Enabled.Value == true);
+        }
+
+        [Test]
+        public void TestUpdateLocalBeatmap()
+        {
+            DialogOverlay dialogOverlay = null!;
+            UpdateBeatmapSetButton? updateButton = null;
+
+            AddStep("create carousel with dialog overlay", () =>
+            {
+                dialogOverlay = new DialogOverlay();
+
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = new (Type, object)[] { (typeof(IDialogOverlay), dialogOverlay), },
+                    Children = new Drawable[]
+                    {
+                        createCarousel(),
+                        dialogOverlay,
+                    },
+                };
+            });
+
+            AddStep("setup beatmap state", () =>
+            {
+                testBeatmapSetInfo.Beatmaps.First().OnlineMD5Hash = "different hash";
+                testBeatmapSetInfo.Beatmaps.First().LastOnlineUpdate = DateTimeOffset.Now;
+                testBeatmapSetInfo.Status = BeatmapOnlineStatus.LocallyModified;
+
+                carousel.UpdateBeatmapSet(testBeatmapSetInfo);
+            });
+
+            AddUntilStep("wait for update button", () => (updateButton = getUpdateButton()) != null);
+            AddStep("click button", () => updateButton.AsNonNull().TriggerClick());
+
+            AddAssert("dialog displayed", () => dialogOverlay.CurrentDialog is UpdateLocalConfirmationDialog);
+            AddStep("click confirmation", () =>
+            {
+                InputManager.MoveMouseTo(dialogOverlay.CurrentDialog.ChildrenOfType<PopupDialogButton>().First());
+                InputManager.PressButton(MouseButton.Left);
+            });
+
+            AddUntilStep("update started", () => beatmapDownloader.GetExistingDownload(testBeatmapSetInfo) != null);
+            AddStep("release mouse button", () => InputManager.ReleaseButton(MouseButton.Left));
+        }
+
+        [Test]
+        public void TestSplitDisplay()
+        {
+            ArchiveDownloadRequest<IBeatmapSetInfo>? downloadRequest = null;
+
+            AddStep("set difficulty sort mode", () => carousel.Filter(new FilterCriteria { Sort = SortMode.Difficulty }));
+            AddStep("update online hash", () =>
+            {
+                testBeatmapSetInfo.Beatmaps.First().OnlineMD5Hash = "different hash";
+                testBeatmapSetInfo.Beatmaps.First().LastOnlineUpdate = DateTimeOffset.Now;
+
+                carousel.UpdateBeatmapSet(testBeatmapSetInfo);
+            });
+
+            AddUntilStep("multiple \"sets\" visible", () => carousel.ChildrenOfType<DrawableCarouselBeatmapSet>().Count(), () => Is.GreaterThan(1));
+            AddUntilStep("update button visible", getUpdateButton, () => Is.Not.Null);
+
+            AddStep("click button", () => getUpdateButton()?.TriggerClick());
+
+            AddUntilStep("wait for download started", () =>
+            {
+                downloadRequest = beatmapDownloader.GetExistingDownload(testBeatmapSetInfo);
+                return downloadRequest != null;
+            });
+
+            AddUntilStep("wait for button disabled", () => getUpdateButton()?.Enabled.Value == false);
+
+            AddUntilStep("progress download to completion", () =>
+            {
+                if (downloadRequest is TestSceneOnlinePlayBeatmapAvailabilityTracker.TestDownloadRequest testRequest)
+                {
+                    testRequest.SetProgress(testRequest.Progress + 0.1f);
+
+                    if (testRequest.Progress >= 1)
+                    {
+                        testRequest.TriggerSuccess();
+
+                        // usually this would be done by the import process.
+                        testBeatmapSetInfo.Beatmaps.First().MD5Hash = "different hash";
+                        testBeatmapSetInfo.Beatmaps.First().LastOnlineUpdate = DateTimeOffset.Now;
+
+                        // usually this would be done by a realm subscription.
+                        carousel.UpdateBeatmapSet(testBeatmapSetInfo);
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+        }
+
+        private BeatmapCarousel createCarousel()
+        {
+            beatmaps.BeatmapSets.Clear();
+            beatmaps.BeatmapSets.Add(testBeatmapSetInfo = TestResources.CreateTestBeatmapSetInfo(5));
+
+            return carousel = new BeatmapCarousel(new FilterCriteria())
+            {
+                RelativeSizeAxes = Axes.Both,
+            };
         }
     }
 }

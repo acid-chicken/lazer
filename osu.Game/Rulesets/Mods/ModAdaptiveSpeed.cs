@@ -10,6 +10,7 @@ using osu.Framework.Localisation;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Overlays.Settings;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
@@ -30,38 +31,30 @@ namespace osu.Game.Rulesets.Mods
 
         public override double ScoreMultiplier => 0.5;
 
-        public override bool ValidForMultiplayer => false;
-        public override bool ValidForMultiplayerAsFreeMod => false;
+        public sealed override bool ValidForMultiplayer => false;
+        public sealed override bool ValidForMultiplayerAsFreeMod => false;
 
         public override Type[] IncompatibleMods => new[] { typeof(ModRateAdjust), typeof(ModTimeRamp), typeof(ModAutoplay) };
 
-        [SettingSource("Initial rate", "The starting speed of the track")]
-        public BindableNumber<double> InitialRate { get; } = new BindableDouble
+        [SettingSource("Initial rate", "The starting speed of the track", SettingControlType = typeof(MultiplierSettingsSlider))]
+        public BindableNumber<double> InitialRate { get; } = new BindableDouble(1)
         {
             MinValue = 0.5,
             MaxValue = 2,
-            Default = 1,
-            Value = 1,
             Precision = 0.01
         };
 
         [SettingSource("Adjust pitch", "Should pitch be adjusted with speed")]
-        public BindableBool AdjustPitch { get; } = new BindableBool
-        {
-            Default = true,
-            Value = true
-        };
+        public BindableBool AdjustPitch { get; } = new BindableBool(true);
 
         /// <summary>
         /// The instantaneous rate of the track.
         /// Every frame this mod will attempt to smoothly adjust this to meet <see cref="targetRate"/>.
         /// </summary>
-        public BindableNumber<double> SpeedChange { get; } = new BindableDouble
+        public BindableNumber<double> SpeedChange { get; } = new BindableDouble(1)
         {
             MinValue = min_allowable_rate,
             MaxValue = max_allowable_rate,
-            Default = 1,
-            Value = 1
         };
 
         // The two constants below denote the maximum allowable range of rates that `SpeedChange` can take.
@@ -78,7 +71,6 @@ namespace osu.Game.Rulesets.Mods
         // Apply a fixed rate change when missing, allowing the player to catch up when the rate is too fast.
         private const double rate_change_on_miss = 0.95d;
 
-        private IAdjustableAudioComponent? track;
         private double targetRate = 1d;
 
         /// <summary>
@@ -130,24 +122,27 @@ namespace osu.Game.Rulesets.Mods
         /// </summary>
         private readonly Dictionary<HitObject, double> ratesForRewinding = new Dictionary<HitObject, double>();
 
+        private readonly RateAdjustModHelper rateAdjustHelper;
+
         public ModAdaptiveSpeed()
         {
+            rateAdjustHelper = new RateAdjustModHelper(SpeedChange);
+            rateAdjustHelper.HandleAudioAdjustments(AdjustPitch);
+
             InitialRate.BindValueChanged(val =>
             {
                 SpeedChange.Value = val.NewValue;
                 targetRate = val.NewValue;
             });
-            AdjustPitch.BindValueChanged(adjustPitchChanged);
         }
 
         public void ApplyToTrack(IAdjustableAudioComponent track)
         {
-            this.track = track;
-
             InitialRate.TriggerChange();
-            AdjustPitch.TriggerChange();
             recentRates.Clear();
             recentRates.AddRange(Enumerable.Repeat(InitialRate.Value, recent_rate_count));
+
+            rateAdjustHelper.ApplyToTrack(track);
         }
 
         public void ApplyToSample(IAdjustableAudioComponent sample)
@@ -178,10 +173,10 @@ namespace osu.Game.Rulesets.Mods
             };
             drawable.OnRevertResult += (_, result) =>
             {
-                if (!ratesForRewinding.ContainsKey(result.HitObject)) return;
+                if (!ratesForRewinding.TryGetValue(result.HitObject, out double rate)) return;
                 if (!shouldProcessResult(result)) return;
 
-                recentRates.Insert(0, ratesForRewinding[result.HitObject]);
+                recentRates.Insert(0, rate);
                 ratesForRewinding.Remove(result.HitObject);
 
                 recentRates.RemoveAt(recentRates.Count - 1);
@@ -193,7 +188,7 @@ namespace osu.Game.Rulesets.Mods
         public void ApplyToBeatmap(IBeatmap beatmap)
         {
             var hitObjects = getAllApplicableHitObjects(beatmap.HitObjects).ToList();
-            var endTimes = hitObjects.Select(x => x.GetEndTime()).OrderBy(x => x).Distinct().ToList();
+            var endTimes = hitObjects.Select(x => x.GetEndTime()).Order().Distinct().ToList();
 
             foreach (HitObject hitObject in hitObjects)
             {
@@ -206,20 +201,11 @@ namespace osu.Game.Rulesets.Mods
             }
         }
 
-        private void adjustPitchChanged(ValueChangedEvent<bool> adjustPitchSetting)
-        {
-            track?.RemoveAdjustment(adjustmentForPitchSetting(adjustPitchSetting.OldValue), SpeedChange);
-            track?.AddAdjustment(adjustmentForPitchSetting(adjustPitchSetting.NewValue), SpeedChange);
-        }
-
-        private AdjustableProperty adjustmentForPitchSetting(bool adjustPitchSettingValue)
-            => adjustPitchSettingValue ? AdjustableProperty.Frequency : AdjustableProperty.Tempo;
-
         private IEnumerable<HitObject> getAllApplicableHitObjects(IEnumerable<HitObject> hitObjects)
         {
             foreach (var hitObject in hitObjects)
             {
-                if (!(hitObject.HitWindows is HitWindows.EmptyHitWindows))
+                if (hitObject.HitWindows != HitWindows.Empty)
                     yield return hitObject;
 
                 foreach (HitObject nested in getAllApplicableHitObjects(hitObject.NestedHitObjects))

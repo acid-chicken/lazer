@@ -1,7 +1,5 @@
-// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
-
-#nullable disable
 
 using System;
 using System.Linq;
@@ -22,10 +20,10 @@ using osu.Game.Tests.Visual;
 
 namespace osu.Game.Rulesets.Mania.Tests.Editor
 {
-    public class TestSceneManiaComposeScreen : EditorClockTestScene
+    public partial class TestSceneManiaComposeScreen : EditorClockTestScene
     {
         [Resolved]
-        private SkinManager skins { get; set; }
+        private SkinManager skins { get; set; } = null!;
 
         [Cached]
         private EditorClipboard clipboard = new EditorClipboard();
@@ -35,7 +33,7 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
         {
             AddStep("setup compose screen", () =>
             {
-                var beatmap = new ManiaBeatmap(new StageDefinition { Columns = 4 })
+                var beatmap = new ManiaBeatmap(new StageDefinition(4))
                 {
                     BeatmapInfo = { Ruleset = new ManiaRuleset().RulesetInfo },
                 };
@@ -69,7 +67,7 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
         [Test]
         public void TestDefaultSkin()
         {
-            AddStep("set default skin", () => skins.CurrentSkinInfo.Value = DefaultSkin.CreateInfo().ToLiveUnmanaged());
+            AddStep("set default skin", () => skins.CurrentSkinInfo.Value = TrianglesSkin.CreateInfo().ToLiveUnmanaged());
         }
 
         [Test]

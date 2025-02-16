@@ -27,13 +27,13 @@ namespace osu.Game.Skinning
             samples = audio.GetSampleStore(new NamespacedResourceStore<byte[]>(resources, @"Samples"));
         }
 
-        public Drawable? GetDrawableComponent(ISkinComponent component) => null;
+        public Drawable? GetDrawableComponent(ISkinComponentLookup lookup) => null;
 
         public Texture? GetTexture(string componentName, WrapMode wrapModeS, WrapMode wrapModeT) => textures.Get(componentName, wrapModeS, wrapModeT);
 
         public ISample? GetSample(ISampleInfo sampleInfo)
         {
-            foreach (string? lookup in sampleInfo.LookupNames)
+            foreach (string lookup in sampleInfo.LookupNames)
             {
                 ISample? sample = samples.Get(lookup);
                 if (sample != null)
@@ -46,7 +46,10 @@ namespace osu.Game.Skinning
         public IBindable<TValue>? GetConfig<TLookup, TValue>(TLookup lookup)
             where TLookup : notnull
             where TValue : notnull
-            => null;
+        {
+            Skin.LogLookupDebug(this, lookup, Skin.LookupDebugType.Miss);
+            return null;
+        }
 
         public void Dispose()
         {

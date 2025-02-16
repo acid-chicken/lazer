@@ -10,6 +10,7 @@ using System.Linq;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Lists;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Legacy;
@@ -20,7 +21,7 @@ using osu.Game.Skinning;
 
 namespace osu.Game.Screens.Edit
 {
-    public class EditorBeatmap : TransactionalCommitComponent, IBeatmap, IBeatSnapProvider
+    public partial class EditorBeatmap : TransactionalCommitComponent, IBeatmap, IBeatSnapProvider
     {
         /// <summary>
         /// Will become <c>true</c> when a new update is queued, and <c>false</c> when all updates have been applied.
@@ -47,6 +48,15 @@ namespace osu.Game.Screens.Edit
         /// Invoked when a <see cref="HitObject"/> is updated.
         /// </summary>
         public event Action<HitObject> HitObjectUpdated;
+
+        /// <summary>
+        /// Invoked after any state changes occurred which triggered a beatmap reprocess via an <see cref="IBeatmapProcessor"/>.
+        /// </summary>
+        /// <remarks>
+        /// Beatmap processing may change the order of hitobjects. This event gives external components a chance to handle any changes
+        /// not covered by the <see cref="HitObjectAdded"/> / <see cref="HitObjectUpdated"/> / <see cref="HitObjectRemoved"/> events.
+        /// </remarks>
+        public event Action BeatmapReprocessed;
 
         /// <summary>
         /// All currently selected <see cref="HitObject"/>s.
@@ -77,6 +87,8 @@ namespace osu.Game.Screens.Edit
         [Resolved]
         private EditorClock editorClock { get; set; }
 
+        public BindableInt PreviewTime { get; }
+
         private readonly IBeatmapProcessor beatmapProcessor;
 
         private readonly Dictionary<HitObject, Bindable<double>> startTimeBindables = new Dictionary<HitObject, Bindable<double>>();
@@ -94,10 +106,33 @@ namespace osu.Game.Screens.Edit
                 BeatmapSkin.BeatmapSkinChanged += SaveState;
             }
 
-            beatmapProcessor = playableBeatmap.BeatmapInfo.Ruleset.CreateInstance().CreateBeatmapProcessor(PlayableBeatmap);
+            beatmapProcessor = new EditorBeatmapProcessor(this, playableBeatmap.BeatmapInfo.Ruleset.CreateInstance());
 
             foreach (var obj in HitObjects)
                 trackStartTime(obj);
+
+            Breaks = new BindableList<BreakPeriod>(playableBeatmap.Breaks);
+            Breaks.BindCollectionChanged((_, _) =>
+            {
+                playableBeatmap.Breaks.Clear();
+                playableBeatmap.Breaks.AddRange(Breaks);
+            });
+
+            Bookmarks = new BindableList<int>(playableBeatmap.Bookmarks);
+            Bookmarks.BindCollectionChanged((_, _) =>
+            {
+                BeginChange();
+                playableBeatmap.Bookmarks = Bookmarks.OrderBy(x => x).Distinct().ToArray();
+                EndChange();
+            });
+
+            PreviewTime = new BindableInt(BeatmapInfo.Metadata.PreviewTime);
+            PreviewTime.BindValueChanged(s =>
+            {
+                BeginChange();
+                BeatmapInfo.Metadata.PreviewTime = s.NewValue;
+                EndChange();
+            });
         }
 
         /// <summary>
@@ -153,7 +188,15 @@ namespace osu.Game.Screens.Edit
             set => PlayableBeatmap.ControlPointInfo = value;
         }
 
-        public List<BreakPeriod> Breaks => PlayableBeatmap.Breaks;
+        public readonly BindableList<BreakPeriod> Breaks;
+
+        SortedList<BreakPeriod> IBeatmap.Breaks
+        {
+            get => PlayableBeatmap.Breaks;
+            set => PlayableBeatmap.Breaks = value;
+        }
+
+        public List<string> UnhandledEventLines => PlayableBeatmap.UnhandledEventLines;
 
         public double TotalBreakTime => PlayableBeatmap.TotalBreakTime;
 
@@ -162,6 +205,86 @@ namespace osu.Game.Screens.Edit
         public IEnumerable<BeatmapStatistic> GetStatistics() => PlayableBeatmap.GetStatistics();
 
         public double GetMostCommonBeatLength() => PlayableBeatmap.GetMostCommonBeatLength();
+
+        public double AudioLeadIn
+        {
+            get => PlayableBeatmap.AudioLeadIn;
+            set => PlayableBeatmap.AudioLeadIn = value;
+        }
+
+        public float StackLeniency
+        {
+            get => PlayableBeatmap.StackLeniency;
+            set => PlayableBeatmap.StackLeniency = value;
+        }
+
+        public bool SpecialStyle
+        {
+            get => PlayableBeatmap.SpecialStyle;
+            set => PlayableBeatmap.SpecialStyle = value;
+        }
+
+        public bool LetterboxInBreaks
+        {
+            get => PlayableBeatmap.LetterboxInBreaks;
+            set => PlayableBeatmap.LetterboxInBreaks = value;
+        }
+
+        public bool WidescreenStoryboard
+        {
+            get => PlayableBeatmap.WidescreenStoryboard;
+            set => PlayableBeatmap.WidescreenStoryboard = value;
+        }
+
+        public bool EpilepsyWarning
+        {
+            get => PlayableBeatmap.EpilepsyWarning;
+            set => PlayableBeatmap.EpilepsyWarning = value;
+        }
+
+        public bool SamplesMatchPlaybackRate
+        {
+            get => PlayableBeatmap.SamplesMatchPlaybackRate;
+            set => PlayableBeatmap.SamplesMatchPlaybackRate = value;
+        }
+
+        public double DistanceSpacing
+        {
+            get => PlayableBeatmap.DistanceSpacing;
+            set => PlayableBeatmap.DistanceSpacing = value;
+        }
+
+        public int GridSize
+        {
+            get => PlayableBeatmap.GridSize;
+            set => PlayableBeatmap.GridSize = value;
+        }
+
+        public double TimelineZoom
+        {
+            get => PlayableBeatmap.TimelineZoom;
+            set => PlayableBeatmap.TimelineZoom = value;
+        }
+
+        public CountdownType Countdown
+        {
+            get => PlayableBeatmap.Countdown;
+            set => PlayableBeatmap.Countdown = value;
+        }
+
+        public int CountdownOffset
+        {
+            get => PlayableBeatmap.CountdownOffset;
+            set => PlayableBeatmap.CountdownOffset = value;
+        }
+
+        public readonly BindableList<int> Bookmarks;
+
+        int[] IBeatmap.Bookmarks
+        {
+            get => PlayableBeatmap.Bookmarks;
+            set => PlayableBeatmap.Bookmarks = value;
+        }
 
         public IBeatmap Clone() => (EditorBeatmap)MemberwiseClone();
 
@@ -177,6 +300,11 @@ namespace osu.Game.Screens.Edit
         /// Perform the provided action on every selected hitobject.
         /// Changes will be grouped as one history action.
         /// </summary>
+        /// <remarks>
+        /// Note that this incurs a full state save, and as such requires the entire beatmap to be encoded, etc.
+        /// Very frequent use of this method (e.g. once a frame) is most discouraged.
+        /// If there is need to do so, use local precondition checks to eliminate changes that are known to be no-ops.
+        /// </remarks>
         /// <param name="action">The action to perform.</param>
         public void PerformOnSelection(Action<HitObject> action)
         {
@@ -295,7 +423,7 @@ namespace osu.Game.Screens.Edit
         /// <param name="index">The index of the <see cref="HitObject"/> to remove.</param>
         public void RemoveAt(int index)
         {
-            var hitObject = (HitObject)mutableHitObjects[index];
+            HitObject hitObject = (HitObject)mutableHitObjects[index]!;
 
             mutableHitObjects.RemoveAt(index);
 
@@ -323,13 +451,15 @@ namespace osu.Game.Screens.Edit
             if (batchPendingUpdates.Count == 0 && batchPendingDeletes.Count == 0 && batchPendingInserts.Count == 0)
                 return;
 
-            beatmapProcessor?.PreProcess();
+            beatmapProcessor.PreProcess();
 
             foreach (var h in batchPendingDeletes) processHitObject(h);
             foreach (var h in batchPendingInserts) processHitObject(h);
             foreach (var h in batchPendingUpdates) processHitObject(h);
 
-            beatmapProcessor?.PostProcess();
+            beatmapProcessor.PostProcess();
+
+            BeatmapReprocessed?.Invoke();
 
             // callbacks may modify the lists so let's be safe about it
             var deletes = batchPendingDeletes.ToArray();
@@ -340,6 +470,8 @@ namespace osu.Game.Screens.Edit
 
             var updates = batchPendingUpdates.ToArray();
             batchPendingUpdates.Clear();
+
+            foreach (var h in deletes) SelectedHitObjects.Remove(h);
 
             foreach (var h in deletes) HitObjectRemoved?.Invoke(h);
             foreach (var h in inserts) HitObjectAdded?.Invoke(h);

@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using osu.Framework.Lists;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Objects;
 
@@ -47,6 +49,11 @@ namespace osu.Game.Beatmaps
             // Shallow clone isn't enough to ensure we don't mutate beatmap info unexpectedly.
             // Can potentially be removed after `Beatmap.Difficulty` doesn't save back to `Beatmap.BeatmapInfo`.
             original.BeatmapInfo = original.BeatmapInfo.Clone();
+            original.ControlPointInfo = original.ControlPointInfo.DeepClone();
+
+            // Used in osu!mania conversion.
+            original.Breaks = new SortedList<BreakPeriod>(Comparer<BreakPeriod>.Default);
+            original.Breaks.AddRange(Beatmap.Breaks);
 
             return ConvertBeatmap(original, cancellationToken);
         }
@@ -65,6 +72,20 @@ namespace osu.Game.Beatmaps
             beatmap.ControlPointInfo = original.ControlPointInfo;
             beatmap.HitObjects = convertHitObjects(original.HitObjects, original, cancellationToken).OrderBy(s => s.StartTime).ToList();
             beatmap.Breaks = original.Breaks;
+            beatmap.UnhandledEventLines = original.UnhandledEventLines;
+            beatmap.AudioLeadIn = original.AudioLeadIn;
+            beatmap.StackLeniency = original.StackLeniency;
+            beatmap.SpecialStyle = original.SpecialStyle;
+            beatmap.LetterboxInBreaks = original.LetterboxInBreaks;
+            beatmap.WidescreenStoryboard = original.WidescreenStoryboard;
+            beatmap.EpilepsyWarning = original.EpilepsyWarning;
+            beatmap.SamplesMatchPlaybackRate = original.SamplesMatchPlaybackRate;
+            beatmap.DistanceSpacing = original.DistanceSpacing;
+            beatmap.GridSize = original.GridSize;
+            beatmap.TimelineZoom = original.TimelineZoom;
+            beatmap.Countdown = original.Countdown;
+            beatmap.CountdownOffset = original.CountdownOffset;
+            beatmap.Bookmarks = original.Bookmarks;
 
             return beatmap;
         }

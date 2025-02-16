@@ -18,7 +18,7 @@ using osuTK;
 
 namespace osu.Game.Rulesets.UI
 {
-    public abstract class ReplayRecorder<T> : ReplayRecorder, IKeyBindingHandler<T>
+    public abstract partial class ReplayRecorder<T> : ReplayRecorder, IKeyBindingHandler<T>
         where T : struct
     {
         private readonly Score target;
@@ -27,7 +27,10 @@ namespace osu.Game.Rulesets.UI
 
         private InputManager inputManager;
 
-        public int RecordFrameRate = 60;
+        /// <summary>
+        /// The frame rate to record replays at.
+        /// </summary>
+        public int RecordFrameRate { get; set; } = 60;
 
         [Resolved]
         private SpectatorClient spectatorClient { get; set; }
@@ -76,7 +79,7 @@ namespace osu.Game.Rulesets.UI
         {
             var last = target.Replay.Frames.LastOrDefault();
 
-            if (!important && last != null && Time.Current - last.Time < (1000d / RecordFrameRate))
+            if (!important && last != null && Time.Current - last.Time < (1000d / RecordFrameRate) * Clock.Rate)
                 return;
 
             var position = ScreenSpaceToGamefield?.Invoke(inputManager.CurrentState.Mouse.Position) ?? inputManager.CurrentState.Mouse.Position;
@@ -94,7 +97,7 @@ namespace osu.Game.Rulesets.UI
         protected abstract ReplayFrame HandleFrame(Vector2 mousePosition, List<T> actions, ReplayFrame previousFrame);
     }
 
-    public abstract class ReplayRecorder : Component
+    public abstract partial class ReplayRecorder : Component
     {
         public Func<Vector2, Vector2> ScreenSpaceToGamefield;
     }

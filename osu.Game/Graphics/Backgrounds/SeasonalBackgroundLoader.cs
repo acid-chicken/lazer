@@ -17,7 +17,7 @@ using osu.Game.Online.API.Requests.Responses;
 
 namespace osu.Game.Graphics.Backgrounds
 {
-    public class SeasonalBackgroundLoader : Component
+    public partial class SeasonalBackgroundLoader : Component
     {
         /// <summary>
         /// Fired when background should be changed due to receiving backgrounds from API
@@ -28,7 +28,6 @@ namespace osu.Game.Graphics.Backgrounds
         [Resolved]
         private IAPIProvider api { get; set; }
 
-        private readonly IBindable<APIState> apiState = new Bindable<APIState>();
         private Bindable<SeasonalBackgroundMode> seasonalBackgroundMode;
         private Bindable<APISeasonalBackgrounds> seasonalBackgrounds;
 
@@ -47,13 +46,12 @@ namespace osu.Game.Graphics.Backgrounds
                     SeasonalBackgroundChanged?.Invoke();
             });
 
-            apiState.BindTo(api.State);
-            apiState.BindValueChanged(fetchSeasonalBackgrounds, true);
+            fetchSeasonalBackgrounds();
         }
 
-        private void fetchSeasonalBackgrounds(ValueChangedEvent<APIState> stateChanged)
+        private void fetchSeasonalBackgrounds()
         {
-            if (seasonalBackgrounds.Value != null || stateChanged.NewValue != APIState.Online)
+            if (seasonalBackgrounds.Value != null)
                 return;
 
             var request = new GetSeasonalBackgroundsRequest();
@@ -97,7 +95,7 @@ namespace osu.Game.Graphics.Backgrounds
     }
 
     [LongRunningLoad]
-    public class SeasonalBackground : Background
+    public partial class SeasonalBackground : Background
     {
         private readonly string url;
         private const string fallback_texture_name = @"Backgrounds/bg1";
@@ -111,8 +109,6 @@ namespace osu.Game.Graphics.Backgrounds
         private void load(LargeTextureStore textures)
         {
             Sprite.Texture = textures.Get(url) ?? textures.Get(fallback_texture_name);
-            // ensure we're not loading in without a transition.
-            this.FadeInFromZero(200, Easing.InOutSine);
         }
 
         public override bool Equals(Background other)
