@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Graphics.Rendering;
 using osu.Framework.Graphics.Rendering.Dummy;
 using osu.Framework.Graphics.Textures;

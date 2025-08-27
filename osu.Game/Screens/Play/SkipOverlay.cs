@@ -7,7 +7,7 @@ using System;
 using JetBrains.Annotations;
 using osu.Framework;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Audio.Track;
 using osu.Framework.Graphics;

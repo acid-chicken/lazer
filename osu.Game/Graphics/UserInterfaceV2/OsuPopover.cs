@@ -2,7 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;

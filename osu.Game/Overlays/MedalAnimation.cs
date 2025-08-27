@@ -14,11 +14,11 @@ using osu.Game.Graphics.Backgrounds;
 using osu.Game.Overlays.MedalSplash;
 using osu.Framework.Allocation;
 using osu.Framework.Audio.Sample;
-using osu.Framework.Audio;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Graphics.Shapes;
 using System;
 using System.Diagnostics;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Graphics.Effects;
 using osu.Framework.Utils;
 

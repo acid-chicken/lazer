@@ -15,6 +15,7 @@ using JetBrains.Annotations;
 using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
+using osu.Framework.Audio.Manager.Bass;
 using osu.Framework.Bindables;
 using osu.Framework.Configuration;
 using osu.Framework.Extensions.IEnumerableExtensions;
@@ -229,6 +230,16 @@ namespace osu.Game
 
         private Bindable<string> configSkin;
 
+        private Bindable<ExclusiveModeBehaviour> exclusiveModeBehaviour;
+
+        private Bindable<bool> isActive;
+
+        private Bindable<bool> isPlaying;
+
+        private Bindable<bool> isInGameplay;
+
+        private AggregateBindable<bool> isActiveAndPlaying;
+
         private RealmDetachedBeatmapStore detachedBeatmapStore;
 
         private readonly string[] args;
@@ -441,8 +452,13 @@ namespace osu.Game
             // Transfer any runtime changes back to configuration file.
             SkinManager.CurrentSkinInfo.ValueChanged += skin => configSkin.Value = skin.NewValue.ID.ToString();
 
+            isActiveAndPlaying = new AggregateBindable<bool>((x, y) => x && y, new BindableBool(true));
+            isActiveAndPlaying.AddSource(isActive = new BindableBool { BindTarget = IsActive });
+            isActiveAndPlaying.AddSource(isPlaying = new BindableBool());
+            isInGameplay = new BindableBool { BindTarget = isActiveAndPlaying.Result };
             UserPlayingState.BindValueChanged(p =>
             {
+                isPlaying.Value = p.NewValue != LocalUserPlayingState.NotPlaying;
                 BeatmapManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
                 SkinManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
                 ScoreManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
@@ -451,6 +467,43 @@ namespace osu.Game
             IsActive.BindValueChanged(active => updateActiveState(active.NewValue), true);
 
             Audio.AddAdjustment(AdjustableProperty.Volume, inactiveVolumeFade);
+
+            if (Audio is BassWasapiAudioManager audio)
+            {
+                exclusiveModeBehaviour = LocalConfig.GetBindable<ExclusiveModeBehaviour>(OsuSetting.ExclusiveModeBehaviour);
+                exclusiveModeBehaviour.BindValueChanged(e =>
+                {
+                    switch (e.OldValue)
+                    {
+                        case ExclusiveModeBehaviour.DuringActive:
+                            audio.Exclusive.UnbindFrom(isActive);
+                            break;
+
+                        case ExclusiveModeBehaviour.DuringGameplay:
+                            audio.Exclusive.UnbindFrom(isInGameplay);
+                            break;
+                    }
+
+                    switch (e.NewValue)
+                    {
+                        case ExclusiveModeBehaviour.Never:
+                            audio.Exclusive.Value = false;
+                            break;
+
+                        case ExclusiveModeBehaviour.Always:
+                            audio.Exclusive.Value = true;
+                            break;
+
+                        case ExclusiveModeBehaviour.DuringActive:
+                            audio.Exclusive.BindTo(isActive);
+                            break;
+
+                        case ExclusiveModeBehaviour.DuringGameplay:
+                            audio.Exclusive.BindTo(isInGameplay);
+                            break;
+                    }
+                }, true);
+            }
 
             SelectedMods.BindValueChanged(modsChanged);
             Beatmap.BindValueChanged(beatmapChanged, true);
@@ -1692,6 +1745,12 @@ namespace osu.Game
                 case Player player:
                     player.PlayingState.UnbindFrom(UserPlayingState);
 
+                    if (!player.IsRestarting || newScreen is not PlayerLoader)
+                        // reset for sanity.
+                        UserPlayingState.Value = LocalUserPlayingState.NotPlaying;
+                    break;
+
+                case PlayerLoader when newScreen is not Player:
                     // reset for sanity.
                     UserPlayingState.Value = LocalUserPlayingState.NotPlaying;
                     break;

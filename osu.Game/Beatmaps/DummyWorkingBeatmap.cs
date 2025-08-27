@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using JetBrains.Annotations;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Track;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics.Textures;

@@ -7,7 +7,7 @@ using System.Linq;
 using Humanizer;
 using NUnit.Framework;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics.Containers;
