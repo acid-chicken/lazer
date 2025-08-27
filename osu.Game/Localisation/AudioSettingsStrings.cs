@@ -25,6 +25,11 @@ namespace osu.Game.Localisation
         public static LocalisableString VolumeHeader => new TranslatableString(getKey(@"volume_header"), @"Volume");
 
         /// <summary>
+        /// "Audio backend"
+        /// </summary>
+        public static LocalisableString AudioBackend => new TranslatableString(getKey(@"audio_backend"), @"Audio backend");
+
+        /// <summary>
         /// "Output device"
         /// </summary>
         public static LocalisableString OutputDevice => new TranslatableString(getKey(@"output_device"), @"Output device");
@@ -98,6 +103,21 @@ namespace osu.Game.Localisation
         /// "If enabled, the offset suggested from last play on a beatmap is automatically applied."
         /// </summary>
         public static LocalisableString AdjustBeatmapOffsetAutomaticallyTooltip => new TranslatableString(getKey(@"adjust_beatmap_offset_automatically_tooltip"), @"If enabled, the offset suggested from last play on a beatmap is automatically applied.");
+
+        /// <summary>
+        /// "In order to change the audio backend, the game will close. Please open it again."
+        /// </summary>
+        public static LocalisableString ChangeAudioBackendConfirmation => new TranslatableString(getKey("change_audio_backend_confirmation"), @"In order to change the audio backend, the game will close. Please open it again.");
+
+        /// <summary>
+        /// "Exclusive mode behaviour"
+        /// </summary>
+        public static LocalisableString ExclusiveModeBehaviour => new TranslatableString(getKey("exclusive_mode_behaviour"), @"Exclusive mode behaviour");
+
+        /// <summary>
+        /// "Changes to this setting will only apply when using BASSWASAPI backend."
+        /// </summary>
+        public static LocalisableString ExclusiveModeAvailabilityNote => new TranslatableString(getKey(@"exclusive_mode_availability_note"), @"Changes to this setting will only apply when using BASSWASAPI backend.");
 
         private static string getKey(string key) => $@"{prefix}:{key}";
     }
