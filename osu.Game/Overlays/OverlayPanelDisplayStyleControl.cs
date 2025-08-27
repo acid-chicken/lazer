@@ -11,7 +11,7 @@ using osuTK;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics.UserInterface;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Sample;
 using osuTK.Graphics;
 using osu.Framework.Graphics.Cursor;

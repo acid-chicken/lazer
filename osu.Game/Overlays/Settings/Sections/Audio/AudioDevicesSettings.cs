@@ -3,14 +3,17 @@
 
 #nullable disable
 
-using osu.Framework.Allocation;
-using osu.Framework.Audio;
-using osu.Framework.Graphics;
 using System.Collections.Generic;
 using System.Linq;
+using osu.Framework.Allocation;
+using osu.Framework.Audio.Manager;
+using osu.Framework.Configuration;
+using osu.Framework.Graphics;
 using osu.Framework.Localisation;
+using osu.Framework.Platform;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
+using osu.Game.Overlays.Dialog;
 
 namespace osu.Game.Overlays.Settings.Sections.Audio
 {
@@ -21,49 +24,73 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
         [Resolved]
         private AudioManager audio { get; set; }
 
-        private SettingsDropdown<string> dropdown;
+        private SettingsDropdown<AudioBackend> backend;
+        private SettingsDropdown<string> device;
+
+        private bool automaticBackendInUse;
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(FrameworkConfigManager config, OsuGame game, IDialogOverlay dialogOverlay)
         {
+            var currentBackend = config.GetBindable<AudioBackend>(FrameworkSetting.AudioBackend);
+            automaticBackendInUse = currentBackend.Value == AudioBackend.Automatic;
+
             Children = new Drawable[]
             {
-                dropdown = new AudioDeviceSettingsDropdown
+                backend = new SettingsEnumDropdown<AudioBackend>
+                {
+                    LabelText = AudioSettingsStrings.AudioBackend,
+                    Keywords = new[] { "backend", "bass", "wasapi" },
+                    Current = currentBackend,
+                    Items = game.GetPreferredAudioBackendsForCurrentPlatform(),
+                },
+                device = new AudioDeviceSettingsDropdown
                 {
                     LabelText = AudioSettingsStrings.OutputDevice,
-                    Keywords = new[] { "speaker", "headphone", "output" }
-                }
+                    Keywords = new[] { "speaker", "headphone", "output" },
+                },
             };
+
+            currentBackend.BindValueChanged(r =>
+            {
+                if (r.NewValue == game.ResolvedAudioBackend)
+                    return;
+
+                if (r.NewValue == AudioBackend.Automatic && automaticBackendInUse)
+                    return;
+
+                if (game?.RestartAppWhenExited() == true)
+                {
+                    game.AttemptExit();
+                }
+                else
+                {
+                    dialogOverlay?.Push(new ConfirmDialog(AudioSettingsStrings.ChangeAudioBackendConfirmation, () => game?.AttemptExit(), () =>
+                    {
+                        currentBackend.Value = automaticBackendInUse ? AudioBackend.Automatic : game?.ResolvedAudioBackend ?? AudioBackend.Automatic;
+                    }));
+                }
+            });
 
             updateItems();
 
             audio.OnNewDevice += onDeviceChanged;
             audio.OnLostDevice += onDeviceChanged;
-            dropdown.Current = audio.AudioDevice;
+            device.Current = audio.AudioDevice;
         }
 
-        private void onDeviceChanged(string name) => updateItems();
+        private void onDeviceChanged(KeyValuePair<string, string> _) => updateItems();
 
         private void updateItems()
         {
             var deviceItems = new List<string> { string.Empty };
-            deviceItems.AddRange(audio.AudioDeviceNames);
+            deviceItems.AddRange(audio.AudioDevices.Keys);
 
             string preferredDeviceName = audio.AudioDevice.Value;
             if (deviceItems.All(kv => kv != preferredDeviceName))
                 deviceItems.Add(preferredDeviceName);
 
-            // The option dropdown for audio device selection lists all audio
-            // device names. Dropdowns, however, may not have multiple identical
-            // keys. Thus, we remove duplicate audio device names from
-            // the dropdown. BASS does not give us a simple mechanism to select
-            // specific audio devices in such a case anyways. Such
-            // functionality would require involved OS-specific code.
-            dropdown.Items = deviceItems
-                             // Dropdown doesn't like null items. Somehow we are seeing some arrive here (see https://github.com/ppy/osu/issues/21271)
-                             .Where(i => i != null)
-                             .Distinct()
-                             .ToList();
+            device.Items = deviceItems.ToList();
         }
 
         protected override void Dispose(bool isDisposing)
@@ -83,8 +110,15 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
 
             private partial class AudioDeviceDropdownControl : DropdownControl
             {
+                [Resolved]
+                private AudioManager audio { get; set; }
+
                 protected override LocalisableString GenerateItemText(string item)
-                    => string.IsNullOrEmpty(item) ? CommonStrings.Default : base.GenerateItemText(item);
+                    => string.IsNullOrEmpty(item)
+                        ? CommonStrings.Default
+                        : audio is AudioManager manager && manager.AudioDevices.TryGetValue(item, out string value)
+                            ? value
+                            : item;
             }
         }
     }

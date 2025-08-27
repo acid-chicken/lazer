@@ -6,7 +6,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Track;
 using osu.Framework.Graphics.Textures;
 using osu.Game.Beatmaps;

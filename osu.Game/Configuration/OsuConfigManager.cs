@@ -486,5 +486,6 @@ namespace osu.Game.Configuration
         LastOnlineTagsPopulation,
 
         AutomaticallyAdjustBeatmapOffset,
+        AudioBackend,
     }
 }

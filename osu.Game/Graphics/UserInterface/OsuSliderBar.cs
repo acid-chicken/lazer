@@ -3,7 +3,7 @@
 
 using System.Numerics;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.UserInterface;

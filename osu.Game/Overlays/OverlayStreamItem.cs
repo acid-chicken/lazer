@@ -9,7 +9,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
+using osu.Framework.Audio.Manager;
 using osu.Framework.Audio.Sample;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics;
